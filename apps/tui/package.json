@@ -1,0 +1,11 @@
+{
+  "name": "tui",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cargo run -p hn-tui",
+    "build": "cargo build -p hn-tui --release",
+    "lint": "cargo clippy -p hn-tui --all-targets -- -D warnings",
+    "test": "cargo test -p hn-tui"
+  }
+}

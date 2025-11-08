@@ -1,0 +1,29 @@
+[workspace]
+members = [
+  "apps/tui",
+  "crates/hn-core",
+  "crates/hn-wasm"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+authors = ["Hacker News Tools <dev@example.com>"]
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1.0"
+color-eyre = "0.6"
+futures = "0.3"
+hn-core = { path = "crates/hn-core" }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "charset"], default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.36", features = ["macros", "rt-multi-thread"] }
+thiserror = "1.0"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+serde-wasm-bindgen = "0.6"
+gloo-net = { version = "0.5", features = ["http"] }
+getrandom = { version = "0.2", features = ["js"] }
+tracing = "0.1"

@@ -1,0 +1,15 @@
+{
+  "name": "@hn/wasm",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "wasm-pack build ../../crates/hn-wasm --target web --out-dir ../../packages/hn-wasm/pkg --out-name hn_wasm",
+    "dev": "pnpm run build && pnpm exec chokidar \"../../crates/hn-core/src/**/*.rs\" \"../../crates/hn-wasm/src/**/*.rs\" \"../../crates/hn-core/Cargo.toml\" \"../../crates/hn-wasm/Cargo.toml\" -c \"pnpm run build\" --throttle 200"
+  },
+  "files": [
+    "pkg"
+  ],
+  "types": "./pkg/hn_wasm.d.ts",
+  "module": "./pkg/hn_wasm.js",
+  "sideEffects": false
+}

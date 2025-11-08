@@ -1,0 +1,19 @@
+{
+  "name": "hn-monorepo",
+  "private": true,
+  "packageManager": "pnpm@8.15.7",
+  "scripts": {
+    "dev": "turbo run dev --filter web... --filter @hn/wasm",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "wasm:build:web": "wasm-pack build crates/hn-wasm --target web --out-dir ../../packages/hn-wasm/pkg --out-name hn_wasm",
+    "wasm:build:bundler": "wasm-pack build crates/hn-wasm --target bundler --out-dir ../../packages/hn-wasm/pkg --out-name hn_wasm",
+    "wasm:build": "pnpm wasm:build:web",
+    "tui": "cargo run -p hn-tui"
+  },
+  "devDependencies": {
+    "chokidar-cli": "^3.0.0",
+    "turbo": "^2.2.3"
+  }
+}

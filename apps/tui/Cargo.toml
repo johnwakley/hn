@@ -1,0 +1,13 @@
+[package]
+name = "hn-tui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+color-eyre = { workspace = true }
+futures = { workspace = true }
+hn-core = { workspace = true }
+ratatui = { version = "0.26", default-features = false, features = ["crossterm"] }
+crossterm = "0.27"
+tokio = { workspace = true }

@@ -1,0 +1,26 @@
+[package]
+name = "hn-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = ["native"]
+native = ["dep:reqwest"]
+wasm = ["dep:gloo-net"]
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true, optional = true }
+gloo-net = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+wasm-bindgen-futures = { workspace = true, optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", features = ["Window", "Request", "Response"], optional = true }
+futures = { workspace = true }
