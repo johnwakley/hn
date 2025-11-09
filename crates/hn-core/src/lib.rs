@@ -29,6 +29,25 @@ pub struct HackerNewsItem {
     pub url: Option<String>,
     #[serde(default)]
     pub time: Option<u64>,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub kids: Vec<u64>,
+    #[serde(default)]
+    pub descendants: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HackerNewsComment {
+    pub id: u64,
+    #[serde(default)]
+    pub by: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub kids: Vec<u64>,
+    #[serde(default)]
+    pub time: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +101,40 @@ impl HackerNewsClient {
             id = id
         );
         http_get_json::<HackerNewsItem>(&url).await
+    }
+
+    pub async fn fetch_comments_for(
+        &self,
+        item: &HackerNewsItem,
+        limit: usize,
+    ) -> Result<Vec<HackerNewsComment>> {
+        if item.kids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let ids = item.kids.iter().copied().take(limit).collect::<Vec<_>>();
+        let futures = ids.into_iter().map(|id| self.fetch_comment(id));
+        let results = join_all(futures).await;
+
+        let mut comments = Vec::new();
+        for res in results {
+            match res {
+                Ok(comment) => comments.push(comment),
+                Err(err) => tracing::warn!(?err, "skipping comment fetch failure"),
+            }
+        }
+
+        Ok(comments)
+    }
+
+    async fn fetch_comment(&self, id: u64) -> Result<HackerNewsComment> {
+        let url = format!(
+            "{base}{item_path}{id}.json",
+            base = self.base_url,
+            item_path = ITEM_PATH,
+            id = id
+        );
+        http_get_json::<HackerNewsComment>(&url).await
     }
 }
 

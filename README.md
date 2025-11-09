@@ -1,6 +1,26 @@
 # Hacker News Multi-platform Monorepo
 
-This repository hosts a pnpm + Turbo + Cargo monorepo that targets the web and the terminal using one shared Rust implementation that can be compiled to WebAssembly. The main goal is to display the top Hacker News stories inside a Vite React SPA and a Rust TUI built with [ratatui](https://github.com/ratatui/ratatui).
+This repository hosts a pnpm + Turbo + Cargo monorepo that targets the web and the terminal using one shared Rust implementation that can be compiled to WebAssembly. The main goal is to display the top Hacker News stories inside a Vite React SPA and a Rust TUI built with [ratatui](https://github.com/ratatui/ratatui). Both surfaces consume the same business logic:
+
+```
+┌────────────┐   wasm-bindgen   ┌──────────────┐
+│  hn-core   │ ───────────────▶ │  hn-wasm     │ ──► Vite SPA (apps/web)
+│ (Rust API) │                  │ (WASM crate) │
+└────────────┘                  └──────────────┘
+      │                                   ▲
+      │  native dependency                │ npm package @hn/wasm
+      ▼                                   │
+┌────────────┐                             │
+│  hn-tui    │ ◄───────────────────────────┘
+│ (ratatui)  │  consumes hn-core directly, mirrors WASM logic
+└────────────┘
+```
+
+Highlights:
+- Shared Rust client (`hn-core`) fetches Hacker News top stories and comments, automatically switching between `reqwest` (native) and `gloo-net` (wasm) transports.
+- `hn-wasm` wraps the shared logic with `wasm-bindgen`/`serde-wasm-bindgen` and is published to the JS workspace as `@hn/wasm`.
+- The SPA renders story lists via Vite + React and lazily loads the WASM module.
+- The TUI renders a split-pane interface: left pane lists stories with arrow/`j`/`k` navigation; right pane streams comments for the selected story in near real time.
 
 ## Structure
 
@@ -29,37 +49,56 @@ packages/
 pnpm install
 ```
 
-### 3. Build the WebAssembly module
+### 3. Core commands
 
-```sh
-pnpm wasm:build
-```
+| Command | Description |
+| --- | --- |
+| `pnpm wasm:build` | One-off build of `hn-wasm` via `wasm-pack`; writes to `packages/hn-wasm/pkg`. Required before the first SPA run or CI build. |
+| `pnpm dev` | Runs Turbo tasks for `apps/web` and `@hn/wasm`. You get the Vite dev server plus a Rust watcher (`chokidar` + `wasm-pack`) so editing any crate rebuilds the WASM artifacts automatically. |
+| `pnpm tui` | Launches the terminal UI (`cargo run -p hn-tui`). Keep this in a separate terminal since it needs a dedicated TTY. |
+| `pnpm build` / `pnpm lint` / `pnpm test` | Turbo entry points for cross-workspace builds, linting, and tests. Extend `turbo.json` as needed. |
 
-This compiles `crates/hn-wasm` and drops the artifacts into `packages/hn-wasm/pkg`, making them available to the Vite app (and any other JS consumer). Re-run the command whenever the Rust code changes. Turbo can watch this as part of the build pipeline if you wire it into CI.
+> Note: The Vite dev server expects generated files in `packages/hn-wasm/pkg`. If you see runtime errors such as “Run `pnpm wasm:build`…”, rebuild the WASM package.
 
-> Note: The Vite dev server expects the generated files in `packages/hn-wasm/pkg`. If you skip this step the SPA will fail to resolve `@hn/wasm`. When you run `pnpm dev`, Turbo also starts a watcher in `@hn/wasm` so edits to the Rust crates trigger `wasm-pack build --watch` automatically.
+## Current capabilities
 
-### 4. Start the apps
+- **Web SPA (apps/web)**: Vite + React + TypeScript front-end that loads `@hn/wasm` dynamically, initializes the WASM module once, and renders the top 20 stories with loading/error states.
+- **Rust TUI (apps/tui)**: Ratatui split-pane experience. The left pane lists stories; `↑/↓` or `j/k` change selection; the right pane streams comments using background async tasks (via `tokio::spawn` + channel). Comments are sanitized for readability.
+- **Shared logic (crates/hn-core)**: A single Rust client powering both targets. Supports story metadata, story text, descendants count, and batched comment fetching with graceful error handling.
+- **WASM bridge (crates/hn-wasm + packages/hn-wasm)**: Exposes `fetch_top_posts` along with bindings (`hn_wasm.js`, `.d.ts`). `pnpm dev` keeps these artifacts fresh.
+- **Tooling integration**: pnpm workspaces, Turbo pipelines, and Rust workspace are aligned so commands (build, lint, dev) span all packages consistently.
 
-```sh
-pnpm dev    # runs the Vite SPA and the WASM watcher (@hn/wasm)
-pnpm tui    # launches the Ratatui client via cargo
-```
+## Workflow tips
 
-The TUI runs in its own terminal because it needs an interactive TTY; keeping it separate prevents Turbo from killing the SPA dev server when the TUI task exits.
+1. Run `pnpm dev` and forward port 5174 if you’re on a remote host (Vite listens on `0.0.0.0:5174`).
+2. In another terminal, run `pnpm tui` to start the Ratatui client; press `q` or `Esc` to exit.
+3. Editing Rust crates triggers the WASM watcher; editing SPA files hot-reloads via Vite.
+4. `cargo check -p hn-tui` and `cargo test` remain fast because the WASM build is isolated in the JS workspace.
 
-## Rust workspace
+## Rust workspace overview
 
-- `hn-core` contains the data contracts and fetching/orchestration logic. It automatically switches between `reqwest` (native) and `gloo-net` (wasm) so the same code can target both hosts.
-- `hn-wasm` wraps `hn-core` with `wasm-bindgen` exports and handles JSON <-> JS conversion via `serde-wasm-bindgen`.
-- `hn-tui` depends directly on `hn-core` today for ergonomics but is structured so you can swap in a `wasmtime` invocation of the compiled `hn-wasm` output if you need to embed the literal WebAssembly module.
+- `hn-core`: API client + data types for Hacker News. Auto switches between native/wasm networking, provides batched comment fetching, and reuses serialization for both hosts.
+- `hn-wasm`: `cdylib` crate exposing `init_panic_hook` and `fetch_top_posts` via `wasm-bindgen`. Optimized with `wasm-opt -Oz` in release builds.
+- `hn-tui`: Binary crate using `tokio`, `crossterm`, and `ratatui` to render the split-pane UI. Uses background tasks with channels to keep the UI responsive.
 
 ## Turbo tasks
 
-Turbo coordinates the dev/build/lint/test pipelines across JS and Rust workspaces. Extend `turbo.json` with additional tasks (e.g., `cargo fmt`, `pnpm wasm:build`, integration tests) as the project grows.
+Turbo coordinates JS + Rust scripts. Current tasks:
 
-## Next steps
+- `dev`: persistent task for `apps/web` and `@hn/wasm`.
+- `build`, `lint`, `test`: extendable pipelines (currently pass-through). Add `cargo fmt`, `cargo clippy`, etc., as you grow.
 
-- Implement richer state management in the SPA (pagination, filtering).
-- Use `wasmtime` in the TUI to execute the `hn-wasm` artifact directly if you want the binary to literally embed the same `.wasm` module used on the web.
-- Add CI workflows (GitHub Actions) that run `pnpm lint`, `pnpm test`, `cargo fmt --check`, `cargo clippy --all-targets`, and `cargo test`.
+## Testing & quality
+
+- `cargo check -p hn-tui` ensures the TUI compiles.
+- `pnpm wasm:build`/`pnpm dev` implicitly run `wasm-pack`.
+- Pending TODOs cover end-to-end tests, CI, and release automation (see below).
+
+## TODO
+
+- [ ] Implement richer state management in the SPA (pagination, filtering, offline cache).
+- [ ] Use `wasmtime` in the TUI to execute the built `hn-wasm` artifact to guarantee the exact same logic as the web bundle.
+- [ ] Add CI workflows (GitHub Actions) running `pnpm lint`, `pnpm test`, `cargo fmt --check`, `cargo clippy --all-targets`, `cargo test`, and `pnpm wasm:build`.
+- [ ] Layer integration tests that assert the shared Rust logic returns deterministic shapes for fixtures (mock HN API responses).
+- [ ] Package release automation (npm + crates.io) once versioning strategy is defined.
+- [ ] Document coding standards (formatting, linting, testing) in CONTRIBUTING.md to streamline outside contributions.

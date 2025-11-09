@@ -5,6 +5,9 @@ export type HackerNewsItem = {
   score: number;
   url?: string | null;
   time?: number | null;
+  text?: string | null;
+  kids?: number[];
+  descendants?: number | null;
 };
 
 type WasmBindings = typeof import('@hn/wasm');
